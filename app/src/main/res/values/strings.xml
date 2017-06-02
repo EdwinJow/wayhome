@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Weather and Traffic</string>
+    <string name="edit_dark_sky_api">Enter your DarkSky API key</string>
+    <string name="edit_home_address">Enter your Home Address</string>
+    <string name="edit_work_address">Enter your Work Address</string>
+    <string name="button_send">Send</string>
+    <string name="confirm_settings_button">Confirm</string>
+</resources>
