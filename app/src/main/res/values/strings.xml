@@ -3,6 +3,19 @@
     <string name="edit_dark_sky_api">Enter your DarkSky API key</string>
     <string name="edit_home_address">Enter your Home Address</string>
     <string name="edit_work_address">Enter your Work Address</string>
+    <string name="place_details">
+    <![CDATA[
+        <b>%1$s</b>
+        <br/>
+        <i>Place Id: %2$s</i>
+        <br/>
+        Address: %3$s
+        <br/>
+        Phone: %4$s
+        <br/>
+        Website: %5$s
+    ]]>
+    </string>
     <string name="button_send">Send</string>
     <string name="confirm_settings_button">Confirm</string>
 </resources>
