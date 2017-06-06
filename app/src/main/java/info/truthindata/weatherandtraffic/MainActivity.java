@@ -52,9 +52,17 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 LatLng t = place.getLatLng();
                 Log.i(TAG, "Place Selected: " + place.getName());
 
-                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()));
-                markers.add(marker);
+                for(int i = 0; i < markers.size(); i++){
+                    Marker marker = markers.get(i);
+                    if(marker.getTag() == "home"){
+                        marker.remove();
+                    }
+                }
 
+                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()));
+                marker.setTag("home");
+
+                markers.add(marker);
                 fitBounds();
             }
 
@@ -70,9 +78,17 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 LatLng t = place.getLatLng();
                 Log.i(TAG, "Place Selected: " + place.getName());
 
-                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()));
-                markers.add(marker);
+                for(int i = 0; i < markers.size(); i++){
+                    Marker marker = markers.get(i);
+                    if(marker.getTag() == "work"){
+                        marker.remove();
+                    }
+                }
 
+                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()));
+                marker.setTag("work");
+
+                markers.add(marker);
                 fitBounds();
             }
 
