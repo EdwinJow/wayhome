@@ -1,8 +1,11 @@
 package info.truthindata.weatherandtraffic;
 
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
+import android.view.View;
+import android.widget.EditText;
 
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.places.Place;
@@ -24,27 +27,41 @@ import java.util.List;
 public class MainActivity extends FragmentActivity implements OnMapReadyCallback  {
     private GoogleMap mMap;
     private static final String TAG = "MainActivity";
+    private static final String PreferencesFileName = "wayhome";
     protected List<Marker> markers = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_main);
+
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-                .findFragmentById(R.id.map);
+            .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
        // Retrieve the PlaceAutocompleteFragment.
         PlaceAutocompleteFragment homeAutoComplete = (PlaceAutocompleteFragment)
-              getFragmentManager().findFragmentById(R.id.place_home_autocomplete_fragment);
+            getFragmentManager().findFragmentById(R.id.place_home_autocomplete_fragment);
 
         // Retrieve the PlaceAutocompleteFragment.
         PlaceAutocompleteFragment workAutoComplete = (PlaceAutocompleteFragment)
-                getFragmentManager().findFragmentById(R.id.place_work_autocomplete_fragment);
+            getFragmentManager().findFragmentById(R.id.place_work_autocomplete_fragment);
+
+        SharedPreferences prefs = getSharedPreferences(PreferencesFileName, MODE_PRIVATE);
+        String home = prefs.getString("home", null);
+        String work = prefs.getString("work", null);
+        String apiKey = prefs.getString("darkSkyApiKey", null);
 
         homeAutoComplete.setHint("Enter your home address");
         workAutoComplete.setHint("Enter your work address");
+
+        if(apiKey != null){
+            EditText darkSkyApiKey;
+            darkSkyApiKey = (EditText)findViewById(R.id.editDarkSkyApi);
+            darkSkyApiKey.setText(apiKey);
+        }
 
         homeAutoComplete.setOnPlaceSelectedListener(new PlaceSelectionListener() {
             @Override
@@ -59,7 +76,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                     }
                 }
 
-                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()));
+                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()).snippet(place.getId()));
                 marker.setTag("home");
 
                 markers.add(marker);
@@ -85,7 +102,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                     }
                 }
 
-                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()));
+                Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()).snippet(place.getId()));
                 marker.setTag("work");
 
                 markers.add(marker);
@@ -110,6 +127,17 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         CameraUpdate cu = CameraUpdateFactory.newLatLngBounds(bounds, padding);
 
         mMap.animateCamera(cu);
+    }
+
+    public void saveData(View view){
+        SharedPreferences.Editor editor = getSharedPreferences(PreferencesFileName, MODE_PRIVATE).edit();
+        EditText darkSkyApiKey;
+        darkSkyApiKey = (EditText)findViewById(R.id.editDarkSkyApi);
+        for (Marker marker : markers) {
+            editor.putString(marker.getTag().toString(), marker.getSnippet().toString());
+        }
+        editor.putString("darkSkyApiKey", darkSkyApiKey.getText().toString());
+        editor.apply();
     }
 
     @Override
