@@ -1,6 +1,7 @@
 package info.truthindata.weatherandtraffic;
 
 import android.content.SharedPreferences;
+import android.location.Location;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
@@ -8,6 +9,8 @@ import android.view.View;
 import android.widget.EditText;
 
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.location.places.ui.PlaceSelectionListener;
@@ -20,15 +23,34 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends FragmentActivity implements OnMapReadyCallback  {
+import info.truthindata.weatherandtraffic.utils.DarkSkyApi;
+
+public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
     private GoogleMap mMap;
-    private static final String TAG = "MainActivity";
+    private static final String TAG = MainActivity.class.getSimpleName();
     private static final String PreferencesFileName = "wayhome";
+    private static String mDarkSkyApiKey = null;
+    private FusedLocationProviderClient mFusedLocationClient;
     protected List<Marker> markers = new ArrayList<>();
+
+    private JsonObject GetDarkSkyForecast(){
+        JsonObject result = new JsonObject();
+
+        try{
+            Location location = mFusedLocationClient.getLastLocation().getResult();
+
+            result = new DarkSkyApi().GetCurrentForecast(location, mDarkSkyApiKey);
+        } catch(SecurityException e){
+            Log.e(TAG, e.getMessage());
+        }
+
+        return result;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,17 +60,20 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-            .findFragmentById(R.id.map);
+                .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
-       // Retrieve the PlaceAutocompleteFragment.
+        // Retrieve the PlaceAutocompleteFragment.
         PlaceAutocompleteFragment homeAutoComplete = (PlaceAutocompleteFragment)
-            getFragmentManager().findFragmentById(R.id.place_home_autocomplete_fragment);
+                getFragmentManager().findFragmentById(R.id.place_home_autocomplete_fragment);
 
         // Retrieve the PlaceAutocompleteFragment.
         PlaceAutocompleteFragment workAutoComplete = (PlaceAutocompleteFragment)
-            getFragmentManager().findFragmentById(R.id.place_work_autocomplete_fragment);
+                getFragmentManager().findFragmentById(R.id.place_work_autocomplete_fragment);
 
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+        // Retrieve user saved data
         SharedPreferences prefs = getSharedPreferences(PreferencesFileName, MODE_PRIVATE);
         String home = prefs.getString("home", null);
         String work = prefs.getString("work", null);
@@ -61,6 +86,9 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
             EditText darkSkyApiKey;
             darkSkyApiKey = (EditText)findViewById(R.id.editDarkSkyApi);
             darkSkyApiKey.setText(apiKey);
+            mDarkSkyApiKey = apiKey;
+
+            JsonObject forecast = GetDarkSkyForecast();
         }
 
         homeAutoComplete.setOnPlaceSelectedListener(new PlaceSelectionListener() {
@@ -69,6 +97,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 LatLng t = place.getLatLng();
                 Log.i(TAG, "Place Selected: " + place.getName());
 
+                //rewrite the marker information to ensure single instances of home/work
                 for(int i = 0; i < markers.size(); i++){
                     Marker marker = markers.get(i);
                     if(marker.getTag() == "home"){
@@ -123,7 +152,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         }
         LatLngBounds bounds = builder.build();
 
-        int padding = 20; // offset from edges of the map in pixels
+        int padding = 40; // offset from edges of the map in pixels
         CameraUpdate cu = CameraUpdateFactory.newLatLngBounds(bounds, padding);
 
         mMap.animateCamera(cu);
