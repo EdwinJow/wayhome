@@ -23,6 +23,7 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
@@ -37,19 +38,25 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
     private static String mDarkSkyApiKey = null;
     private FusedLocationProviderClient mFusedLocationClient;
     protected List<Marker> markers = new ArrayList<>();
+    protected JsonObject forecastResult;
 
     private JsonObject GetDarkSkyForecast(){
-        JsonObject result = new JsonObject();
-
         try{
-            Location location = mFusedLocationClient.getLastLocation().getResult();
-
-            result = new DarkSkyApi().GetCurrentForecast(location, mDarkSkyApiKey);
+            mFusedLocationClient.getLastLocation()
+                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                        @Override
+                        public void onSuccess(Location location) {
+                            // Got last known location. In some rare situations this can be null.
+                            if (location != null) {
+                                forecastResult = new DarkSkyApi().GetCurrentForecast(location, mDarkSkyApiKey);
+                            }
+                        }
+                    });;
         } catch(SecurityException e){
             Log.e(TAG, e.getMessage());
         }
 
-        return result;
+        return forecastResult;
     }
 
     @Override
@@ -61,6 +68,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
+
         mapFragment.getMapAsync(this);
 
         // Retrieve the PlaceAutocompleteFragment.
