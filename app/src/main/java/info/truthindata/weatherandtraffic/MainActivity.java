@@ -1,16 +1,24 @@
 package info.truthindata.weatherandtraffic;
 
+import android.Manifest;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.location.Criteria;
 import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 
 import com.google.android.gms.common.api.Status;
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.places.Place;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.location.places.ui.PlaceSelectionListener;
@@ -23,47 +31,35 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import info.truthindata.weatherandtraffic.utils.DarkSkyApi;
-
-public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
+public class MainActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener {
     private GoogleMap mMap;
-    private static final String TAG = MainActivity.class.getSimpleName();
     private static final String PreferencesFileName = "wayhome";
     private static String mDarkSkyApiKey = null;
-    private FusedLocationProviderClient mFusedLocationClient;
     protected List<Marker> markers = new ArrayList<>();
     protected JsonObject forecastResult;
-
-    private JsonObject GetDarkSkyForecast(){
-        try{
-            mFusedLocationClient.getLastLocation()
-                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
-                        @Override
-                        public void onSuccess(Location location) {
-                            // Got last known location. In some rare situations this can be null.
-                            if (location != null) {
-                                forecastResult = new DarkSkyApi().GetCurrentForecast(location, mDarkSkyApiKey);
-                            }
-                        }
-                    });;
-        } catch(SecurityException e){
-            Log.e(TAG, e.getMessage());
-        }
-
-        return forecastResult;
-    }
+    private static final String TAG = MainActivity.class.getSimpleName();
+    LocationManager locationManager;
+    private String provider;
+    private Location currentLocation;
+    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_main);
+
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        provider = locationManager.getBestProvider(new Criteria(), false);
+
+        if(checkLocationPermission()){
+            currentLocation = locationManager.getLastKnownLocation(provider);
+        }
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
@@ -79,8 +75,6 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         PlaceAutocompleteFragment workAutoComplete = (PlaceAutocompleteFragment)
                 getFragmentManager().findFragmentById(R.id.place_work_autocomplete_fragment);
 
-        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-
         // Retrieve user saved data
         SharedPreferences prefs = getSharedPreferences(PreferencesFileName, MODE_PRIVATE);
         String home = prefs.getString("home", null);
@@ -90,13 +84,11 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         homeAutoComplete.setHint("Enter your home address");
         workAutoComplete.setHint("Enter your work address");
 
-        if(apiKey != null){
+        if (apiKey != null) {
             EditText darkSkyApiKey;
-            darkSkyApiKey = (EditText)findViewById(R.id.editDarkSkyApi);
+            darkSkyApiKey = (EditText) findViewById(R.id.editDarkSkyApi);
             darkSkyApiKey.setText(apiKey);
             mDarkSkyApiKey = apiKey;
-
-            JsonObject forecast = GetDarkSkyForecast();
         }
 
         homeAutoComplete.setOnPlaceSelectedListener(new PlaceSelectionListener() {
@@ -167,6 +159,10 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     public void saveData(View view){
+        if(checkLocationPermission()){
+            currentLocation = locationManager.getLastKnownLocation(provider);
+        }
+
         SharedPreferences.Editor editor = getSharedPreferences(PreferencesFileName, MODE_PRIVATE).edit();
         EditText darkSkyApiKey;
         darkSkyApiKey = (EditText)findViewById(R.id.editDarkSkyApi);
@@ -182,5 +178,111 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         LatLng defaultCoords = new LatLng(40.1623518,-74.9563831);
         mMap = googleMap;
         mMap.moveCamera(CameraUpdateFactory.newLatLng(defaultCoords));
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        Double lat = location.getLatitude();
+        Double lng = location.getLongitude();
+
+        Log.i(TAG + "Location info: Lat", lat.toString());
+        Log.i(TAG + "Location info: Lng", lng.toString());
+    }
+
+    @Override
+    public void onProviderEnabled(String provider) {
+
+    }
+
+    @Override
+    public void onProviderDisabled(String provider) {
+
+    }
+
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {
+
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        if (checkLocationPermission()) {
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission. ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+
+                //Request location updates:
+                locationManager.requestLocationUpdates(provider, 400, 1, this);
+            }
+        }
+
+    }
+    public boolean checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission. ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            // Should we show an explanation?
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission. ACCESS_FINE_LOCATION)) {
+
+                // Show an explanation to the user *asynchronously* -- don't block
+                // this thread waiting for the user's response! After the user
+                // sees the explanation, try again to request the permission.
+                new AlertDialog.Builder(this)
+                        .setTitle(R.string.permission_required_toast)
+                        .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int i) {
+                                //Prompt the user once explanation has been shown
+                                ActivityCompat.requestPermissions(MainActivity.this,
+                                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                                        MY_PERMISSIONS_REQUEST_LOCATION);
+                            }
+                        })
+                        .create()
+                        .show();
+
+
+            } else {
+                // No explanation needed, we can request the permission.
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission. ACCESS_FINE_LOCATION},
+                        MY_PERMISSIONS_REQUEST_LOCATION);
+            }
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case MY_PERMISSIONS_REQUEST_LOCATION: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+                    // permission was granted, yay! Do the
+                    // location-related task you need to do.
+                    if (ContextCompat.checkSelfPermission(this,
+                            Manifest.permission. ACCESS_FINE_LOCATION)
+                            == PackageManager.PERMISSION_GRANTED) {
+
+                        //Request location updates:
+                        locationManager.requestLocationUpdates(provider, 400, 1, this);
+                    }
+
+                } else {
+                    // permission denied
+                }
+                return;
+            }
+
+        }
     }
 }

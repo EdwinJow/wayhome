@@ -3,4 +3,7 @@
     <string name="edit_dark_sky_api">Enter your DarkSky API key</string>
     <string name="button_send">Save</string>
     <string name="confirm_settings_button">Confirm</string>
+    <string name="location_permission_denied">Permission denied</string>
+    <string name="permission_required_toast">Location Permission is Required</string>
+    <string name="permission_rationale_location">Location Permission is Required</string>
 </resources>
