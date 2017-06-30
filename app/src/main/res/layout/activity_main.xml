@@ -6,20 +6,6 @@
     android:layout_height="match_parent"
     tools:context="info.truthindata.weatherandtraffic.MainActivity">
 
-    <Button
-        android:id="@+id/save_data_button"
-        style="@android:style/Widget.Material.Button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginRight="16dp"
-        android:layout_marginTop="16dp"
-        android:background="?android:attr/colorPrimary"
-        android:text="@string/button_send"
-        android:textColor="@color/common_google_signin_btn_text_dark_default"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/place_work_autocomplete_fragment"
-        android:onClick="saveData"/>
-
     <EditText
         android:id="@+id/editDarkSkyApi"
         android:layout_width="0dp"
@@ -64,12 +50,28 @@
         android:layout_height="0dp"
         map:layout_constraintLeft_toLeftOf="parent"
         map:layout_constraintRight_toRightOf="parent"
-        map:layout_constraintTop_toBottomOf="@+id/save_data_button"
         tools:context="info.truthindata.wayhome.MapsActivity"
-        android:layout_marginTop="8dp"
         map:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginBottom="8dp"
-        map:layout_constraintVertical_bias="0.0" />
+        android:layout_marginBottom="4dp"
+        map:layout_constraintHorizontal_bias="0.501"
+        android:layout_marginTop="8dp"
+        map:layout_constraintTop_toBottomOf="@+id/place_work_autocomplete_fragment" />
+
+    <android.support.design.widget.FloatingActionButton
+        android:id="@+id/floatingActionButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="80dp"
+        android:layout_marginRight="35dp"
+        android:clickable="true"
+        android:onClick="saveData"
+        android:tint="@android:color/white"
+        app:backgroundTint="@android:color/holo_blue_light"
+        app:elevation="3dp"
+        app:fabSize="normal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:srcCompat="@drawable/ic_add_black_24dp" />
 
 
 </android.support.constraint.ConstraintLayout>

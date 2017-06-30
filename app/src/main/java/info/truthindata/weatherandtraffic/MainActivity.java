@@ -10,6 +10,7 @@ import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
@@ -17,6 +18,7 @@ import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.Toast;
 
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.places.Place;
@@ -31,22 +33,48 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.gson.JsonObject;
+import com.google.gson.Gson;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+
+import info.truthindata.weatherandtraffic.models.ForecastResult;
+import info.truthindata.weatherandtraffic.utils.HttpRequest;
 
 public class MainActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener {
     private GoogleMap mMap;
     private static final String PreferencesFileName = "wayhome";
     private static String mDarkSkyApiKey = null;
     protected List<Marker> markers = new ArrayList<>();
-    protected JsonObject forecastResult;
     private static final String TAG = MainActivity.class.getSimpleName();
     LocationManager locationManager;
     private String provider;
     private Location currentLocation;
     public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+
+    private class DarkSkyForecast extends AsyncTask<String, Void, String> {
+        @Override
+        protected String doInBackground(String[] params) {
+            try{
+                String key = params[0];
+                String result = HttpRequest.get(String.format("https://api.darksky.net/forecast/%s/%f,%f", key, currentLocation.getLatitude(), currentLocation.getLongitude())).body();
+                Gson gson = new Gson();
+                ForecastResult forecast = new ForecastResult();
+
+                ForecastResult forecastResult = gson.fromJson(result, forecast.getClass());
+
+                return forecastResult.minutely.summary;
+            }
+            catch(Exception e){
+                Exception f = e;
+                return f.toString();
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String message) {}
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -158,18 +186,35 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.animateCamera(cu);
     }
 
-    public void saveData(View view){
+    public void saveData(View view) throws ExecutionException, InterruptedException {
+        SharedPreferences.Editor editor = getSharedPreferences(PreferencesFileName, MODE_PRIVATE).edit();
+        EditText darkSkyApiEditText;
+        darkSkyApiEditText = (EditText)findViewById(R.id.editDarkSkyApi);
+        String darkSkyApiString = darkSkyApiEditText.getText().toString();
+
         if(checkLocationPermission()){
             currentLocation = locationManager.getLastKnownLocation(provider);
+
+            if(currentLocation != null){
+                DarkSkyForecast getForecast = new DarkSkyForecast();
+                final AsyncTask<String, Void, String> execute = getForecast.execute(darkSkyApiString);
+
+                String currentForecast = execute.get();
+
+                Context context = getApplicationContext();
+                CharSequence text = currentForecast;
+                int duration = Toast.LENGTH_LONG;
+
+                Toast toast = Toast.makeText(context, text, duration);
+                toast.show();
+
+            }
         }
 
-        SharedPreferences.Editor editor = getSharedPreferences(PreferencesFileName, MODE_PRIVATE).edit();
-        EditText darkSkyApiKey;
-        darkSkyApiKey = (EditText)findViewById(R.id.editDarkSkyApi);
         for (Marker marker : markers) {
             editor.putString(marker.getTag().toString(), marker.getSnippet().toString());
         }
-        editor.putString("darkSkyApiKey", darkSkyApiKey.getText().toString());
+        editor.putString("darkSkyApiKey", darkSkyApiString);
         editor.apply();
     }
 
@@ -190,19 +235,13 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     @Override
-    public void onProviderEnabled(String provider) {
-
-    }
+    public void onProviderEnabled(String provider) {}
 
     @Override
-    public void onProviderDisabled(String provider) {
-
-    }
+    public void onProviderDisabled(String provider) {}
 
     @Override
-    public void onStatusChanged(String provider, int status, Bundle extras) {
-
-    }
+    public void onStatusChanged(String provider, int status, Bundle extras) {}
 
     @Override
     protected void onResume() {
@@ -224,13 +263,8 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 Manifest.permission. ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
 
-            // Should we show an explanation?
             if (ActivityCompat.shouldShowRequestPermissionRationale(this,
                     Manifest.permission. ACCESS_FINE_LOCATION)) {
-
-                // Show an explanation to the user *asynchronously* -- don't block
-                // this thread waiting for the user's response! After the user
-                // sees the explanation, try again to request the permission.
                 new AlertDialog.Builder(this)
                         .setTitle(R.string.permission_required_toast)
                         .setPositiveButton("OK", new DialogInterface.OnClickListener() {
@@ -244,8 +278,6 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                         })
                         .create()
                         .show();
-
-
             } else {
                 // No explanation needed, we can request the permission.
                 ActivityCompat.requestPermissions(this,
@@ -266,13 +298,10 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                    // permission was granted, yay! Do the
-                    // location-related task you need to do.
+                    // permission was granted
                     if (ContextCompat.checkSelfPermission(this,
                             Manifest.permission. ACCESS_FINE_LOCATION)
                             == PackageManager.PERMISSION_GRANTED) {
-
                         //Request location updates:
                         locationManager.requestLocationUpdates(provider, 400, 1, this);
                     }
