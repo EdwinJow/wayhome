@@ -12,6 +12,7 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.ContextCompat;
@@ -20,8 +21,13 @@ import android.view.View;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
 import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.PlaceBuffer;
+import com.google.android.gms.location.places.Places;
 import com.google.android.gms.location.places.ui.PlaceAutocompleteFragment;
 import com.google.android.gms.location.places.ui.PlaceSelectionListener;
 import com.google.android.gms.maps.CameraUpdate;
@@ -34,24 +40,33 @@ import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.gson.Gson;
+import com.google.maps.android.SphericalUtil;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 import info.truthindata.weatherandtraffic.models.ForecastResult;
+import info.truthindata.weatherandtraffic.models.GoogleDirectionsResult;
 import info.truthindata.weatherandtraffic.utils.HttpRequest;
 
-public class MainActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener {
+import static android.R.attr.duration;
+
+public class MainActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener, GoogleApiClient.OnConnectionFailedListener {
     private GoogleMap mMap;
+    private GoogleApiClient mGoogleApiClient;
     private static final String PreferencesFileName = "wayhome";
     private static String mDarkSkyApiKey = null;
-    protected List<Marker> markers = new ArrayList<>();
+    Map<String, Marker> markers = new HashMap<>();
     private static final String TAG = MainActivity.class.getSimpleName();
     LocationManager locationManager;
     private String provider;
-    private Location currentLocation;
+    protected Location currentLocation;
     public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+    private PlaceAutocompleteFragment homeAutoComplete;
+    private PlaceAutocompleteFragment workAutoComplete;
+    public String homePlaceId;
+    public String workPlaceId;
 
     private class DarkSkyForecast extends AsyncTask<String, Void, String> {
         @Override
@@ -69,6 +84,56 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
             catch(Exception e){
                 Exception f = e;
                 return f.toString();
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String message) {}
+    }
+
+    protected class DrivingDirections extends AsyncTask<String, Void, String> {
+        @Override
+        protected String doInBackground(String[] params) {
+            try{
+                Context context = getApplicationContext();
+                String from = params[0];
+                String to = params[1];
+                String url = String.format("https://maps.googleapis.com/maps/api/directions/json?origin=place_id:%s&destination=place_id:%s&key=%s",
+                        from,
+                        to,
+                        context.getString(R.string.google_directions_api_key));
+
+                String json = HttpRequest
+                        .get(url)
+                        .body();
+
+                Gson gson = new Gson();
+
+                GoogleDirectionsResult directionModel = new GoogleDirectionsResult();
+                GoogleDirectionsResult directionsResult = gson.fromJson(json, directionModel.getClass());
+
+                String result = "";
+
+                if(directionsResult.status.equals("OK"))
+                {
+                    String summary = directionsResult.routes[0].summary;
+
+                    //break off if not using the turnpike
+                    if(!summary.contains("I-276")){
+                        result = "WARNING: Directions routed outside of normal driving area";
+                        return result;
+                    }
+
+                    result += String.format("Directions from %s", params[2]) + "\n";
+                    result += directionsResult.routes[0].legs[0].distance.text + "\n";
+                    result += directionsResult.routes[0].legs[0].duration.text;
+                }
+
+                return result;
+            }
+            catch(Exception e){
+                Exception f = e;
+                return e.toString();
             }
         }
 
@@ -95,13 +160,18 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
 
         mapFragment.getMapAsync(this);
 
-        // Retrieve the PlaceAutocompleteFragment.
-        PlaceAutocompleteFragment homeAutoComplete = (PlaceAutocompleteFragment)
+        homeAutoComplete  = (PlaceAutocompleteFragment)
                 getFragmentManager().findFragmentById(R.id.place_home_autocomplete_fragment);
 
-        // Retrieve the PlaceAutocompleteFragment.
-        PlaceAutocompleteFragment workAutoComplete = (PlaceAutocompleteFragment)
+        workAutoComplete = (PlaceAutocompleteFragment)
                 getFragmentManager().findFragmentById(R.id.place_work_autocomplete_fragment);
+
+        mGoogleApiClient = new GoogleApiClient
+                .Builder( this )
+                .enableAutoManage( this, 0, this )
+                .addApi( Places.GEO_DATA_API )
+                .addOnConnectionFailedListener(this)
+                .build();
 
         // Retrieve user saved data
         SharedPreferences prefs = getSharedPreferences(PreferencesFileName, MODE_PRIVATE);
@@ -111,6 +181,26 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
 
         homeAutoComplete.setHint("Enter your home address");
         workAutoComplete.setHint("Enter your work address");
+
+        if(work != null){
+            setPlaceDataById(work, "work");
+            workPlaceId = work;
+        }
+
+        if(home != null){
+            setPlaceDataById(home, "home");
+            homePlaceId = home;
+        }
+
+        if(work != null && home != null){
+            try {
+                getDrivingDirections();
+            } catch (ExecutionException e) {
+                Log.e(TAG, e.getMessage());
+            } catch (InterruptedException e) {
+                Log.e(TAG, e.getMessage());
+            }
+        }
 
         if (apiKey != null) {
             EditText darkSkyApiKey;
@@ -125,18 +215,12 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 LatLng t = place.getLatLng();
                 Log.i(TAG, "Place Selected: " + place.getName());
 
-                //rewrite the marker information to ensure single instances of home/work
-                for(int i = 0; i < markers.size(); i++){
-                    Marker marker = markers.get(i);
-                    if(marker.getTag() == "home"){
-                        marker.remove();
-                    }
-                }
-
                 Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()).snippet(place.getId()));
                 marker.setTag("home");
 
-                markers.add(marker);
+                //rewrite the marker information to ensure single instances of home/work
+                markers.put("home", marker);
+
                 fitBounds();
             }
 
@@ -152,17 +236,10 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 LatLng t = place.getLatLng();
                 Log.i(TAG, "Place Selected: " + place.getName());
 
-                for(int i = 0; i < markers.size(); i++){
-                    Marker marker = markers.get(i);
-                    if(marker.getTag() == "work"){
-                        marker.remove();
-                    }
-                }
-
                 Marker marker = mMap.addMarker(new MarkerOptions().position(t).title(place.getName().toString()).snippet(place.getId()));
                 marker.setTag("work");
 
-                markers.add(marker);
+                markers.put("work", marker);
                 fitBounds();
             }
 
@@ -173,14 +250,90 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         });
     }
 
+    private void getDrivingDirections() throws ExecutionException, InterruptedException {
+        String from;
+        String to;
+        if(currentLocation != null){
+            LatLng latLng = new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude());
+            Marker homeMarker = markers.get("home");
+            Marker workMarker = markers.get("work");
+
+            if(homeMarker == null && workMarker == null){
+                return;
+            }
+
+            LatLng homeLatLng = homeMarker.getPosition();
+            LatLng workLatLng = workMarker.getPosition();
+
+            double distanceToHome = SphericalUtil.computeDistanceBetween(latLng, homeLatLng);
+            double distanceToWork = SphericalUtil.computeDistanceBetween(latLng, workLatLng);
+
+            String startLocation;
+
+            if(distanceToHome < distanceToWork){
+                from = homePlaceId;
+                to = workPlaceId;
+                startLocation = "home";
+            } else{
+                from = workPlaceId;
+                to = homePlaceId;
+                startLocation = "work";
+            }
+
+            DrivingDirections drivingDirections = new DrivingDirections();
+            final AsyncTask<String, Void, String> execute = drivingDirections.execute(from, to, startLocation);
+
+            String directions = execute.get();
+
+            Context context = getApplicationContext();
+
+            Toast toast = Toast.makeText(context, directions, duration);
+            toast.show();
+        }
+
+//        int duration = Toast.LENGTH_LONG;
+//
+//        Toast toast = Toast.makeText(context, currentForecast, duration);
+//        toast.show();
+    }
+
+    private void setPlaceDataById(String placeId, final String markerTag){
+        Places.GeoDataApi.getPlaceById(mGoogleApiClient, placeId)
+                .setResultCallback(new ResultCallback<PlaceBuffer>() {
+                    @Override
+                    public void onResult(@NonNull PlaceBuffer places) {
+                        if (places.getStatus().isSuccess() && places.getCount() > 0) {
+                            final Place place = places.get(0);
+                            Log.i(TAG, "Place found: " + place.getName());
+                            Marker marker = mMap.addMarker(new MarkerOptions().position(place.getLatLng()).title(place.getName().toString()).snippet(place.getId()));
+                            marker.setTag(markerTag);
+                            markers.put(markerTag, marker);
+
+                            if(markerTag.equals("home")){
+                                homeAutoComplete.setText(place.getName());
+                            } else{
+                                workAutoComplete.setText(place.getName());
+                            }
+
+                        } else {
+                            Log.e(TAG, "Place not found");
+                        }
+                        fitBounds();
+                        places.release();
+                    }
+                });
+    }
+
     public void fitBounds(){
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
-        for (Marker marker : markers) {
+
+        for (Marker marker : markers.values()) {
             builder.include(marker.getPosition());
         }
+
         LatLngBounds bounds = builder.build();
 
-        int padding = 40; // offset from edges of the map in pixels
+        int padding = 60; // offset from edges of the map in pixels
         CameraUpdate cu = CameraUpdateFactory.newLatLngBounds(bounds, padding);
 
         mMap.animateCamera(cu);
@@ -188,8 +341,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
 
     public void saveData(View view) throws ExecutionException, InterruptedException {
         SharedPreferences.Editor editor = getSharedPreferences(PreferencesFileName, MODE_PRIVATE).edit();
-        EditText darkSkyApiEditText;
-        darkSkyApiEditText = (EditText)findViewById(R.id.editDarkSkyApi);
+        EditText darkSkyApiEditText = (EditText)findViewById(R.id.editDarkSkyApi);
         String darkSkyApiString = darkSkyApiEditText.getText().toString();
 
         if(checkLocationPermission()){
@@ -202,18 +354,19 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 String currentForecast = execute.get();
 
                 Context context = getApplicationContext();
-                CharSequence text = currentForecast;
                 int duration = Toast.LENGTH_LONG;
 
-                Toast toast = Toast.makeText(context, text, duration);
+                Toast toast = Toast.makeText(context, currentForecast, duration);
                 toast.show();
 
+                getDrivingDirections();
             }
         }
 
-        for (Marker marker : markers) {
+        for (Marker marker : markers.values()) {
             editor.putString(marker.getTag().toString(), marker.getSnippet().toString());
         }
+
         editor.putString("darkSkyApiKey", darkSkyApiString);
         editor.apply();
     }
@@ -235,15 +388,6 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     @Override
-    public void onProviderEnabled(String provider) {}
-
-    @Override
-    public void onProviderDisabled(String provider) {}
-
-    @Override
-    public void onStatusChanged(String provider, int status, Bundle extras) {}
-
-    @Override
     protected void onResume() {
         super.onResume();
 
@@ -258,6 +402,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         }
 
     }
+
     public boolean checkLocationPermission() {
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission. ACCESS_FINE_LOCATION)
@@ -292,7 +437,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
 
     @Override
     public void onRequestPermissionsResult(int requestCode,
-                                           String permissions[], int[] grantResults) {
+                                           @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
             case MY_PERMISSIONS_REQUEST_LOCATION: {
                 // If request is cancelled, the result arrays are empty.
@@ -309,9 +454,19 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 } else {
                     // permission denied
                 }
-                return;
             }
-
         }
     }
+
+    @Override
+    public void onProviderEnabled(String provider) {}
+
+    @Override
+    public void onProviderDisabled(String provider) {}
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {}
+
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {}
 }

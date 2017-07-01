@@ -6,4 +6,5 @@
     <string name="location_permission_denied">Permission denied</string>
     <string name="permission_required_toast">Location Permission is Required</string>
     <string name="permission_rationale_location">Location Permission is Required</string>
+    <string name="google_directions_api_key">AIzaSyDBwf3k9OG4WpJeipzRfu_GFKtiZjaxz9s</string>
 </resources>
