@@ -42,6 +42,7 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.gson.Gson;
 import com.google.maps.android.SphericalUtil;
 
+import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -49,8 +50,7 @@ import java.util.concurrent.ExecutionException;
 import info.truthindata.weatherandtraffic.models.ForecastResult;
 import info.truthindata.weatherandtraffic.models.GoogleDirectionsResult;
 import info.truthindata.weatherandtraffic.utils.HttpRequest;
-
-import static android.R.attr.duration;
+import info.truthindata.weatherandtraffic.utils.NotificationHelper;
 
 public class MainActivity extends FragmentActivity implements OnMapReadyCallback, LocationListener, GoogleApiClient.OnConnectionFailedListener {
     private GoogleMap mMap;
@@ -112,27 +112,41 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 GoogleDirectionsResult directionModel = new GoogleDirectionsResult();
                 GoogleDirectionsResult directionsResult = gson.fromJson(json, directionModel.getClass());
 
-                String result = "";
-
+                StringBuilder stringBuilder = new StringBuilder();
                 if(directionsResult.status.equals("OK"))
                 {
+
                     String summary = directionsResult.routes[0].summary;
+                    String newLine = System.getProperty("line.separator");
+                    String[] warnings = directionsResult.routes[0].warnings;
 
                     //break off if not using the turnpike
                     if(!summary.contains("I-276")){
-                        result = "WARNING: Directions routed outside of normal driving area";
-                        return result;
+                        stringBuilder.append("WARNING: Directions routed outside of normal driving area");
+                        return stringBuilder.toString();
                     }
 
-                    result += String.format("Directions from %s", params[2]) + "\n";
-                    result += directionsResult.routes[0].legs[0].distance.text + "\n";
-                    result += directionsResult.routes[0].legs[0].duration.text;
-                }
+                    stringBuilder.append(String.format("Directions from %s", params[2]))
+                            .append(newLine)
+                            .append(directionsResult.routes[0].legs[0].distance.text)
+                            .append(newLine)
+                            .append(directionsResult.routes[0].legs[0].duration.text);
 
-                return result;
+                    if(warnings.length > 0){
+                        stringBuilder.append("WARNINGS: ")
+                                .append(newLine);
+                        for(String warning : warnings){
+                            stringBuilder.append(warning)
+                                    .append(newLine);
+                        }
+                    }
+//                    result += String.format("Directions from %s", params[2]) + "\n";
+//                    result += directionsResult.routes[0].legs[0].distance.text + "\n";
+//                    result += directionsResult.routes[0].legs[0].duration.text;
+                }
+                return stringBuilder.toString();
             }
             catch(Exception e){
-                Exception f = e;
                 return e.toString();
             }
         }
@@ -250,7 +264,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         });
     }
 
-    private void getDrivingDirections() throws ExecutionException, InterruptedException {
+    private String getDrivingDirections() throws ExecutionException, InterruptedException {
         String from;
         String to;
         if(currentLocation != null){
@@ -259,7 +273,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
             Marker workMarker = markers.get("work");
 
             if(homeMarker == null && workMarker == null){
-                return;
+                return null;
             }
 
             LatLng homeLatLng = homeMarker.getPosition();
@@ -285,16 +299,9 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
 
             String directions = execute.get();
 
-            Context context = getApplicationContext();
-
-            Toast toast = Toast.makeText(context, directions, duration);
-            toast.show();
+            return directions;
         }
-
-//        int duration = Toast.LENGTH_LONG;
-//
-//        Toast toast = Toast.makeText(context, currentForecast, duration);
-//        toast.show();
+        return null;
     }
 
     private void setPlaceDataById(String placeId, final String markerTag){
@@ -339,6 +346,11 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         mMap.animateCamera(cu);
     }
 
+    public void sendNotification(String title, @NonNull String text){
+        NotificationHelper notificationHelper = new NotificationHelper(this, getApplicationContext());
+        notificationHelper.sendNotification((title.equals(null)) ? "Way Home" : title, text);
+    }
+
     public void saveData(View view) throws ExecutionException, InterruptedException {
         SharedPreferences.Editor editor = getSharedPreferences(PreferencesFileName, MODE_PRIVATE).edit();
         EditText darkSkyApiEditText = (EditText)findViewById(R.id.editDarkSkyApi);
@@ -351,15 +363,23 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 DarkSkyForecast getForecast = new DarkSkyForecast();
                 final AsyncTask<String, Void, String> execute = getForecast.execute(darkSkyApiString);
 
-                String currentForecast = execute.get();
+                String currentForecast = "Forecast: " + execute.get();
+                StringWriter stringWriter = new StringWriter();
+                String directions = getDrivingDirections();
+
+                stringWriter
+                        .append(currentForecast)
+                        .append(System.getProperty("line.separator"))
+                        .append(System.getProperty("line.separator"))
+                        .append(directions);
 
                 Context context = getApplicationContext();
                 int duration = Toast.LENGTH_LONG;
 
-                Toast toast = Toast.makeText(context, currentForecast, duration);
+                Toast toast = Toast.makeText(context, stringWriter.toString(), duration);
                 toast.show();
 
-                getDrivingDirections();
+                sendNotification("Way Home", stringWriter.toString());
             }
         }
 
